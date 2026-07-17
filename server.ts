@@ -71,7 +71,7 @@ async function startServer() {
           }
 
           const summary = await summarizeContent(text);
-          res.json(summary);
+          res.json({ ...summary, articleContext: text });
       } catch (error) {
           console.error(error);
           res.status(500).json({ error: 'Failed to fetch or summarize the URL' });
@@ -87,10 +87,57 @@ async function startServer() {
 
       try {
           const summary = await summarizeContent(text);
-          res.json(summary);
+          res.json({ ...summary, articleContext: text });
       } catch (error) {
           console.error(error);
           res.status(500).json({ error: 'Failed to summarize the text' });
+      }
+  });
+
+  app.post('/api/chat', async (req, res) => {
+      const { articleContext, history, message, attachments } = req.body;
+
+      try {
+          const contents = [];
+          
+          if (history && history.length > 0) {
+              for (const msg of history) {
+                  contents.push({
+                      role: msg.role === 'user' ? 'user' : 'model',
+                      parts: [{ text: msg.text }]
+                  });
+              }
+          }
+
+          const currentParts: any[] = [];
+          
+          // Add article context only to the first message if history is empty
+          if (articleContext && (!history || history.length === 0)) {
+              currentParts.push({ text: `[Article Context]:\n${articleContext}\n\nUser Message:\n${message}` });
+          } else {
+              currentParts.push({ text: message });
+          }
+
+          if (attachments && attachments.length > 0) {
+              for (const att of attachments) {
+                  currentParts.push({ inlineData: { data: att.data, mimeType: att.mimeType } });
+              }
+          }
+
+          contents.push({ role: 'user', parts: currentParts });
+
+          const response = await ai.models.generateContent({
+              model: "gemini-3.5-flash",
+              contents: contents,
+              config: {
+                  systemInstruction: "You are a helpful assistant. The user is asking questions about the provided article. Provide concise, clear, and insightful answers. Communicate in the same language as the user's prompt (default to Chinese if unsure)."
+              }
+          });
+
+          res.json({ text: response.text });
+      } catch (error) {
+          console.error(error);
+          res.status(500).json({ error: 'Failed to generate chat response' });
       }
   });
 

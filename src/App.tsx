@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Link, FileText, ArrowRight, Loader2, Bookmark, AlertCircle, Copy, Check } from 'lucide-react';
+import ChatUI from './components/ChatUI';
 
 export default function App() {
   const [mode, setMode] = useState<'url' | 'text'>('url');
@@ -8,7 +9,7 @@ export default function App() {
   const [text, setText] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [summary, setSummary] = useState<{ conclusion: string; keyTakeaways: string[] } | null>(null);
+  const [summary, setSummary] = useState<{ conclusion: string; keyTakeaways: string[], articleContext: string } | null>(null);
   const [isPaywall, setIsPaywall] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -38,28 +39,33 @@ export default function App() {
         body: JSON.stringify(body),
       });
 
-      const data = await response.json();
+      let data;
+      try {
+        data = await response.clone().json();
+      } catch (parseError) {
+        // If we can't parse JSON, it's likely an HTML error page from a proxy timeout or crash
+        const text = await response.text();
+        console.error("Non-JSON response received:", text.substring(0, 200));
+        throw new Error('PAYWALL_OR_TIMEOUT');
+      }
 
       if (!response.ok) {
         if (data.error === 'PAYWALL_DETECTED') {
-          setIsPaywall(true);
-          throw new Error('This article appears to be behind a paywall. Please use the Paste Text method.');
+          throw new Error('PAYWALL_DETECTED');
         }
-        throw new Error(data.error || 'Failed to summarize');
+        throw new Error(data.message || data.error || 'Failed to summarize');
       }
 
       setSummary(data);
     } catch (err: any) {
-      setError(err.message);
+      if (err.message === 'PAYWALL_DETECTED' || err.message === 'PAYWALL_OR_TIMEOUT' || err.message.includes('Unexpected token')) {
+        setIsPaywall(true);
+      } else {
+        setError(err.message);
+      }
     } finally {
       setLoading(false);
     }
-  };
-
-  const handlePaywallFallback = () => {
-    setMode('text');
-    setIsPaywall(false);
-    setError('');
   };
 
   return (
@@ -112,7 +118,49 @@ export default function App() {
             </button>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-6">
+          {isPaywall ? (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="text-center py-6"
+            >
+              <div className="w-16 h-16 bg-amber-100 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-amber-200 shadow-sm">
+                <AlertCircle className="w-8 h-8 text-amber-600" />
+              </div>
+              <h3 className="text-xl font-bold text-slate-900 mb-2">Login Required</h3>
+              <p className="text-slate-600 mb-6 font-medium max-w-md mx-auto leading-relaxed">
+                We couldn't access the full article. It seems to be protected by a login wall (like Medium or Substack).
+              </p>
+              
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-6 text-left mb-6">
+                <h4 className="font-bold text-slate-900 mb-4 uppercase tracking-widest text-xs">How to summarize this:</h4>
+                <ol className="space-y-4">
+                  <li className="flex gap-3">
+                    <span className="flex-shrink-0 w-6 h-6 bg-indigo-100 text-indigo-700 rounded-full flex items-center justify-center text-xs font-bold">1</span>
+                    <p className="text-sm text-slate-700 font-medium pt-0.5">Open the article and log in with your account.</p>
+                  </li>
+                  <li className="flex gap-3">
+                    <span className="flex-shrink-0 w-6 h-6 bg-indigo-100 text-indigo-700 rounded-full flex items-center justify-center text-xs font-bold">2</span>
+                    <p className="text-sm text-slate-700 font-medium pt-0.5">Copy all the text (Ctrl+A, Ctrl+C) or use the Bookmarklet below.</p>
+                  </li>
+                  <li className="flex gap-3">
+                    <span className="flex-shrink-0 w-6 h-6 bg-indigo-100 text-indigo-700 rounded-full flex items-center justify-center text-xs font-bold">3</span>
+                    <p className="text-sm text-slate-700 font-medium pt-0.5">Switch to the "Paste Text" tab here and paste it.</p>
+                  </li>
+                </ol>
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                 <button onClick={() => window.open(url, '_blank')} className="px-5 py-2.5 bg-white hover:bg-slate-50 text-slate-700 font-bold rounded-lg transition-colors border border-slate-200 shadow-sm flex items-center justify-center gap-2">
+                   Open Article
+                 </button>
+                 <button onClick={() => { setMode('text'); setIsPaywall(false); }} className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg transition-colors shadow-sm shadow-indigo-600/20 flex items-center justify-center gap-2">
+                   Switch to Paste Text
+                 </button>
+              </div>
+            </motion.div>
+          ) : (
+            <form onSubmit={handleSubmit} className="space-y-6">
             <AnimatePresence mode="wait">
               {mode === 'url' ? (
                 <motion.div
@@ -185,15 +233,6 @@ export default function App() {
                   <div>
                     <p className="font-bold text-red-900">Error</p>
                     <p className="text-sm mt-1 font-medium text-red-800">{error}</p>
-                    {isPaywall && (
-                      <button
-                        type="button"
-                        onClick={handlePaywallFallback}
-                        className="mt-3 text-sm bg-red-100 hover:bg-red-200 px-4 py-2 rounded-lg font-bold transition-colors shadow-sm text-red-900 border border-red-200"
-                      >
-                        Switch to Paste Text
-                      </button>
-                    )}
                   </div>
                 </div>
               </motion.div>
@@ -218,6 +257,7 @@ export default function App() {
               )}
             </button>
           </form>
+          )}
         </motion.div>
 
         {/* Results */}
@@ -258,6 +298,9 @@ export default function App() {
                   ))}
                 </div>
               </div>
+
+              {/* Chat UI */}
+              <ChatUI articleContext={summary.articleContext} />
             </motion.div>
           )}
         </AnimatePresence>

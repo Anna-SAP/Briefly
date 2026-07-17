@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Link, FileText, ArrowRight, Loader2, Bookmark, AlertCircle, Copy, Check } from 'lucide-react';
+import { Link, FileText, ArrowRight, Loader2, Bookmark, AlertCircle, Copy, Check, RefreshCw } from 'lucide-react';
 import ChatUI from './components/ChatUI';
 
 export default function App() {
@@ -11,6 +11,14 @@ export default function App() {
   const [error, setError] = useState('');
   const [summary, setSummary] = useState<{ conclusion: string; keyTakeaways: string[], articleContext: string } | null>(null);
   const [isPaywall, setIsPaywall] = useState(false);
+
+  const handleReset = () => {
+    setUrl('');
+    setText('');
+    setError('');
+    setSummary(null);
+    setIsPaywall(false);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -96,26 +104,39 @@ export default function App() {
           transition={{ delay: 0.1 }}
           className="glass rounded-2xl p-6 md:p-8 shadow-sm"
         >
-          {/* Tabs */}
-          <div className="flex space-x-2 mb-8 bg-slate-100/80 p-1.5 rounded-xl border border-slate-200/50">
-            <button
-              onClick={() => { setMode('url'); setError(''); setSummary(null); setIsPaywall(false); }}
-              className={`flex-1 flex items-center justify-center space-x-2 py-3 rounded-lg font-bold transition-all ${
-                mode === 'url' ? 'bg-white text-slate-900 shadow-sm border border-slate-200/50' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
-              }`}
-            >
-              <Link className="w-4 h-4" />
-              <span>URL</span>
-            </button>
-            <button
-              onClick={() => { setMode('text'); setError(''); setSummary(null); setIsPaywall(false); }}
-              className={`flex-1 flex items-center justify-center space-x-2 py-3 rounded-lg font-bold transition-all ${
-                mode === 'text' ? 'bg-white text-slate-900 shadow-sm border border-slate-200/50' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
-              }`}
-            >
-              <FileText className="w-4 h-4" />
-              <span>Paste Text</span>
-            </button>
+          {/* Tabs and Reset */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4">
+            <div className="flex space-x-2 bg-slate-100/80 p-1.5 rounded-xl border border-slate-200/50 w-full sm:w-auto">
+              <button
+                onClick={() => { setMode('url'); setError(''); setSummary(null); setIsPaywall(false); }}
+                className={`flex-1 sm:flex-none sm:w-32 flex items-center justify-center space-x-2 py-3 rounded-lg font-bold transition-all ${
+                  mode === 'url' ? 'bg-white text-slate-900 shadow-sm border border-slate-200/50' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
+                }`}
+              >
+                <Link className="w-4 h-4" />
+                <span>URL</span>
+              </button>
+              <button
+                onClick={() => { setMode('text'); setError(''); setSummary(null); setIsPaywall(false); }}
+                className={`flex-1 sm:flex-none sm:w-36 flex items-center justify-center space-x-2 py-3 rounded-lg font-bold transition-all ${
+                  mode === 'text' ? 'bg-white text-slate-900 shadow-sm border border-slate-200/50' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
+                }`}
+              >
+                <FileText className="w-4 h-4" />
+                <span>Paste Text</span>
+              </button>
+            </div>
+            
+            {(url || text || summary || error) && (
+              <button
+                onClick={handleReset}
+                className="flex items-center justify-center space-x-2 px-4 py-2.5 rounded-xl font-bold text-slate-500 hover:text-slate-700 hover:bg-slate-200/50 transition-all border border-transparent hover:border-slate-200 self-end sm:self-auto"
+                title="Reset everything"
+              >
+                <RefreshCw className="w-4 h-4" />
+                <span>Reset</span>
+              </button>
+            )}
           </div>
 
           {isPaywall ? (

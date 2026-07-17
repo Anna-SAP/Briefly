@@ -1,0 +1,6 @@
+{
+  "name": "Briefly",
+  "description": "An AI-powered web article summarizer. Extracts concise conclusions and key takeaways, with a fallback mechanism for paywalled content.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -10,6 +10,16 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
+  // Add CORS headers to allow bookmarklet to POST from any domain
+  app.use((req, res, next) => {
+      res.header('Access-Control-Allow-Origin', '*');
+      res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+      if (req.method === 'OPTIONS') {
+          return res.sendStatus(200);
+      }
+      next();
+  });
+
   app.use(express.json({ limit: '50mb' }));
 
   const ai = new GoogleGenAI({
@@ -38,9 +48,13 @@ async function startServer() {
                    type: Type.ARRAY,
                    items: { type: Type.STRING },
                    description: "核心重点列表"
+               },
+               integrityDiagnosis: {
+                   type: Type.STRING,
+                   description: "完整性诊断：检查抓取到的内容是否存在明显的截断迹象（例如：文章以半句话结束、缺少正文只有导航栏等）。如果有问题请说明，如果内容完整则说明“文章内容读取完整”。"
                }
            },
-           required: ["conclusion", "keyTakeaways"]
+           required: ["conclusion", "keyTakeaways", "integrityDiagnosis"]
         }
       }
     });
@@ -55,12 +69,41 @@ async function startServer() {
       }
 
       try {
-          const jinaUrl = `https://r.jina.ai/${url}`;
-          const jinaRes = await fetch(jinaUrl);
-          const text = await jinaRes.text();
+          let text = '';
 
-          // Paywall heuristic detection
-          const isPaywall = text.length < 400 || /sign in to read|paywall|subscribe to read|log in to continue|to continue reading this article/i.test(text);
+          // If user provided a specific cookie for this platform, fetch directly to bypass paywall
+          const userCookies = req.body.cookies;
+          let useDirectFetch = false;
+          let directHtml = '';
+
+          if (userCookies && typeof userCookies === 'object') {
+              const domain = new URL(url).hostname.replace(/^www\./, '');
+              const matchedCookie = Object.keys(userCookies).find(d => domain.includes(d));
+              if (matchedCookie && userCookies[matchedCookie]) {
+                  useDirectFetch = true;
+                  try {
+                      const res = await fetch(url, {
+                          headers: {
+                              'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                              'Cookie': userCookies[matchedCookie]
+                          }
+                      });
+                      directHtml = await res.text();
+                      text = directHtml; // We will pass raw HTML to Gemini and let it extract the content
+                  } catch (e) {
+                      console.error("Direct fetch with cookies failed", e);
+                  }
+              }
+          }
+
+          if (!useDirectFetch) {
+              const jinaUrl = `https://r.jina.ai/${url}`;
+              const jinaRes = await fetch(jinaUrl);
+              text = await jinaRes.text();
+          }
+
+          // Paywall heuristic detection (only if we didn't use cookies, or if the fetched text is still too short)
+          const isPaywall = !useDirectFetch && (text.length < 400 || /sign in to read|paywall|subscribe to read|log in to continue|to continue reading this article/i.test(text));
 
           if (isPaywall) {
                res.status(403).json({ 
